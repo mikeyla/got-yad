@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import type { Player } from '../types/game';
 import { GAME_CONFIG } from '../types/game';
 
@@ -11,6 +12,21 @@ interface LobbyScreenProps {
   onLeaveGame: () => void;
 }
 
+// Copy icon SVG
+const CopyIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </svg>
+);
+
+// Check icon SVG
+const CheckIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <polyline points="20 6 9 17 4 12" />
+  </svg>
+);
+
 export const LobbyScreen: React.FC<LobbyScreenProps> = ({
   roomCode,
   players,
@@ -19,10 +35,14 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
   onAddPlayer,
   onLeaveGame,
 }) => {
-  const [newPlayerName, setNewPlayerName] = React.useState('');
+  const [newPlayerName, setNewPlayerName] = useState('');
+  const [copied, setCopied] = useState(false);
   const currentPlayer = players.find(p => p.id === currentPlayerId);
   const isHost = currentPlayer?.isHost;
   const canStart = players.length >= GAME_CONFIG.MIN_PLAYERS;
+
+  // Generate join URL
+  const joinUrl = `${window.location.origin}?join=${roomCode}`;
 
   const handleAddPlayer = () => {
     if (newPlayerName.trim()) {
@@ -31,24 +51,63 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
     }
   };
 
+  const handleCopyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(roomCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = roomCode;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4">
-      {/* Room Code */}
+      {/* Room Code Section */}
       <div className="text-center mb-8">
-        <p className="arcade-font text-[10px] text-gray-400 mb-2">ROOM CODE</p>
-        <div className="arcade-card inline-block px-8 py-4">
-          <p className="arcade-font text-3xl tracking-[0.5em] text-yellow-400 glow-text">
+        <p className="arcade-font text-[10px] text-[hsl(var(--muted-foreground))] mb-2">ROOM CODE</p>
+        <div className="arcade-card inline-flex items-center gap-4 px-6 py-4">
+          <p className="arcade-font text-3xl tracking-[0.3em] text-[hsl(var(--accent))]" style={{ textShadow: '0 0 10px hsl(50 100% 50% / 0.5)' }}>
             {roomCode}
           </p>
+          <button
+            onClick={handleCopyCode}
+            className={`copy-btn ${copied ? 'copied' : ''}`}
+            title="Copy room code"
+          >
+            {copied ? <CheckIcon /> : <CopyIcon />}
+          </button>
         </div>
-        <p className="arcade-font text-[8px] text-gray-500 mt-2">
-          SHARE THIS CODE WITH FRIENDS
+        <p className="arcade-font text-[8px] text-[hsl(var(--muted-foreground))] mt-2">
+          {copied ? 'COPIED!' : 'CLICK TO COPY'}
         </p>
+      </div>
+
+      {/* QR Code Section */}
+      <div className="text-center mb-8">
+        <p className="arcade-font text-[10px] text-[hsl(var(--muted-foreground))] mb-3">SCAN TO JOIN</p>
+        <div className="qr-container">
+          <QRCodeSVG
+            value={joinUrl}
+            size={120}
+            level="M"
+            bgColor="hsl(60, 100%, 97%)"
+            fgColor="hsl(240, 20%, 4%)"
+          />
+        </div>
       </div>
 
       {/* Players List */}
       <div className="arcade-card w-full max-w-md mb-6">
-        <h2 className="arcade-font text-xs text-center mb-4 text-cyan-400">
+        <h2 className="arcade-font text-xs text-center mb-4 text-[hsl(var(--primary))]">
           PLAYERS ({players.length}/{GAME_CONFIG.MAX_PLAYERS})
         </h2>
 
@@ -58,8 +117,8 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
               key={player.id}
               className={`flex items-center gap-3 p-3 border-2 ${
                 player.id === currentPlayerId
-                  ? 'border-yellow-400 bg-yellow-400/10'
-                  : 'border-white/20 bg-white/5'
+                  ? 'border-[hsl(var(--accent))] bg-[hsl(var(--accent)/0.1)]'
+                  : 'border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.3)]'
               }`}
             >
               {/* Avatar */}
@@ -72,19 +131,19 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
 
               {/* Name */}
               <div className="flex-1">
-                <p className="font-bold text-white">
+                <p className="font-bold text-[hsl(var(--foreground))]">
                   {player.nickname}
                   {player.id === currentPlayerId && (
-                    <span className="text-yellow-400 text-xs ml-2">(YOU)</span>
+                    <span className="text-[hsl(var(--accent))] text-xs ml-2">(YOU)</span>
                   )}
                 </p>
                 {player.isHost && (
-                  <p className="arcade-font text-[8px] text-red-400">HOST</p>
+                  <p className="arcade-font text-[8px] text-[hsl(var(--destructive))]">HOST</p>
                 )}
               </div>
 
               {/* Ready indicator */}
-              <span className="arcade-font text-[8px] text-green-400">
+              <span className="arcade-font text-[8px] text-[hsl(var(--success))]">
                 READY
               </span>
             </div>
@@ -93,8 +152,8 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
 
         {/* Add player for local testing */}
         {players.length < GAME_CONFIG.MAX_PLAYERS && (
-          <div className="mt-4 pt-4 border-t border-white/20">
-            <p className="arcade-font text-[8px] text-gray-400 mb-2">
+          <div className="mt-4 pt-4 border-t border-[hsl(var(--border))]">
+            <p className="arcade-font text-[8px] text-[hsl(var(--muted-foreground))] mb-2">
               ADD LOCAL PLAYER (FOR TESTING)
             </p>
             <div className="flex gap-2">
@@ -109,7 +168,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
               />
               <button
                 onClick={handleAddPlayer}
-                className="arcade-btn arcade-btn-blue py-2 px-4 text-[8px]"
+                className="arcade-btn py-2 px-4 text-[8px]"
               >
                 ADD
               </button>
@@ -122,7 +181,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
       {isHost ? (
         <div className="space-y-4 w-full max-w-md">
           {!canStart && (
-            <p className="arcade-font text-[10px] text-center text-red-400">
+            <p className="arcade-font text-[10px] text-center text-[hsl(var(--destructive))]">
               NEED AT LEAST {GAME_CONFIG.MIN_PLAYERS} PLAYERS TO START
             </p>
           )}
@@ -138,7 +197,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
         </div>
       ) : (
         <div className="text-center">
-          <p className="arcade-font text-[10px] text-gray-400 blink">
+          <p className="arcade-font text-[10px] text-[hsl(var(--muted-foreground))] blink">
             WAITING FOR HOST TO START...
           </p>
         </div>
@@ -147,7 +206,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
       {/* Leave button */}
       <button
         onClick={onLeaveGame}
-        className="arcade-font text-[10px] text-gray-400 hover:text-red-400 mt-8"
+        className="arcade-font text-[10px] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--destructive))] mt-8"
       >
         LEAVE GAME
       </button>

@@ -189,7 +189,7 @@ export function useGameState() {
     return roomCode;
   }, []);
 
-  const joinGame = useCallback((nickname: string) => {
+  const joinGame = useCallback((nickname: string, roomCode?: string) => {
     setState(prev => {
       const newPlayer: Player = {
         id: generateId(),
@@ -203,6 +203,11 @@ export function useGameState() {
 
       return {
         ...prev,
+        // Set room code and phase if joining a new room
+        ...(roomCode && prev.roomCode !== roomCode ? {
+          phase: 'lobby' as const,
+          roomCode,
+        } : {}),
         players: [...prev.players, newPlayer],
         currentPlayerId: newPlayer.id,
       };
@@ -354,6 +359,7 @@ export function useGameState() {
 
   return {
     state,
+    setState,
     createGame,
     joinGame,
     startGame,

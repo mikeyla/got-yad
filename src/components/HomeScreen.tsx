@@ -1,16 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GAME_CONFIG } from '../types/game';
 
 interface HomeScreenProps {
   onCreateGame: (nickname: string) => void;
   onJoinGame: (nickname: string, code: string) => void;
+  initialJoinCode?: string;
 }
 
-export const HomeScreen: React.FC<HomeScreenProps> = ({ onCreateGame, onJoinGame }) => {
+export const HomeScreen: React.FC<HomeScreenProps> = ({ onCreateGame, onJoinGame, initialJoinCode }) => {
   const [nickname, setNickname] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [mode, setMode] = useState<'select' | 'create' | 'join'>('select');
   const [error, setError] = useState('');
+
+  // Auto-switch to join mode if we have an initial join code
+  useEffect(() => {
+    if (initialJoinCode) {
+      setRoomCode(initialJoinCode);
+      setMode('join');
+    }
+  }, [initialJoinCode]);
 
   const handleCreate = () => {
     if (!nickname.trim()) {
@@ -45,16 +54,16 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onCreateGame, onJoinGame
       {/* Title */}
       <div className="text-center mb-12 float">
         <h1 className="arcade-font text-4xl md:text-6xl mb-4">
-          <span className="text-red-500 flicker">GOT</span>
-          <span className="text-yellow-400 flicker"> YA!</span>
+          <span className="text-[hsl(var(--destructive))] flicker">GOT</span>
+          <span className="text-[hsl(var(--accent))] flicker"> YA!</span>
         </h1>
-        <p className="arcade-font text-xs text-gray-400 tracking-wider">
+        <p className="arcade-font text-xs text-[hsl(var(--muted-foreground))] tracking-wider">
           THE ULTIMATE BLUFF GAME
         </p>
       </div>
 
       {/* Tagline */}
-      <p className="arcade-font text-[10px] text-center text-gray-500 mb-8 max-w-md">
+      <p className="arcade-font text-[10px] text-center text-[hsl(var(--muted-foreground))] mb-8 max-w-md">
         OUTSMART. OUTGUESS. OUTPLAY.
       </p>
 
@@ -68,12 +77,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onCreateGame, onJoinGame
           </button>
           <button
             onClick={() => setMode('join')}
-            className="arcade-btn arcade-btn-blue w-full"
+            className="arcade-btn arcade-btn-secondary w-full"
           >
             JOIN GAME
           </button>
 
-          <p className="arcade-font text-[8px] text-center text-gray-500 mt-8">
+          <p className="arcade-font text-[8px] text-center text-[hsl(var(--muted-foreground))] mt-8">
             UP TO 20 PLAYERS • TEST YOUR WITS
           </p>
         </div>
@@ -81,13 +90,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onCreateGame, onJoinGame
 
       {mode === 'create' && (
         <div className="arcade-card w-full max-w-md">
-          <h2 className="arcade-font text-sm text-center mb-6 text-yellow-400">
+          <h2 className="arcade-font text-sm text-center mb-6 text-[hsl(var(--accent))]">
             CREATE GAME
           </h2>
 
           <div className="space-y-4">
             <div>
-              <label className="arcade-font text-[10px] text-gray-400 block mb-2">
+              <label className="arcade-font text-[10px] text-[hsl(var(--muted-foreground))] block mb-2">
                 YOUR NICKNAME
               </label>
               <input
@@ -105,7 +114,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onCreateGame, onJoinGame
             </div>
 
             {error && (
-              <p className="arcade-font text-[10px] text-red-500 text-center shake">
+              <p className="arcade-font text-[10px] text-[hsl(var(--destructive))] text-center shake">
                 {error}
               </p>
             )}
@@ -122,7 +131,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onCreateGame, onJoinGame
                 setMode('select');
                 setError('');
               }}
-              className="arcade-font text-[10px] text-gray-400 hover:text-white w-full text-center py-2"
+              className="arcade-font text-[10px] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] w-full text-center py-2"
             >
               ← BACK
             </button>
@@ -132,13 +141,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onCreateGame, onJoinGame
 
       {mode === 'join' && (
         <div className="arcade-card w-full max-w-md">
-          <h2 className="arcade-font text-sm text-center mb-6 text-cyan-400">
+          <h2 className="arcade-font text-sm text-center mb-6 text-[hsl(var(--primary))]">
             JOIN GAME
           </h2>
 
           <div className="space-y-4">
             <div>
-              <label className="arcade-font text-[10px] text-gray-400 block mb-2">
+              <label className="arcade-font text-[10px] text-[hsl(var(--muted-foreground))] block mb-2">
                 YOUR NICKNAME
               </label>
               <input
@@ -156,7 +165,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onCreateGame, onJoinGame
             </div>
 
             <div>
-              <label className="arcade-font text-[10px] text-gray-400 block mb-2">
+              <label className="arcade-font text-[10px] text-[hsl(var(--muted-foreground))] block mb-2">
                 ROOM CODE
               </label>
               <input
@@ -173,14 +182,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onCreateGame, onJoinGame
             </div>
 
             {error && (
-              <p className="arcade-font text-[10px] text-red-500 text-center shake">
+              <p className="arcade-font text-[10px] text-[hsl(var(--destructive))] text-center shake">
                 {error}
               </p>
             )}
 
             <button
               onClick={handleJoin}
-              className="arcade-btn arcade-btn-blue w-full"
+              className="arcade-btn w-full"
             >
               JOIN
             </button>
@@ -190,7 +199,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onCreateGame, onJoinGame
                 setMode('select');
                 setError('');
               }}
-              className="arcade-font text-[10px] text-gray-400 hover:text-white w-full text-center py-2"
+              className="arcade-font text-[10px] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] w-full text-center py-2"
             >
               ← BACK
             </button>
@@ -199,7 +208,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onCreateGame, onJoinGame
       )}
 
       {/* Insert coin blinking text */}
-      <p className="arcade-font text-[10px] text-green-400 mt-12 blink">
+      <p className="arcade-font text-[10px] text-[hsl(var(--success))] mt-12 blink">
         INSERT COIN
       </p>
     </div>
