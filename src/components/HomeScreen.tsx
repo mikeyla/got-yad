@@ -43,10 +43,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onCreateGame, onJoinGame
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4">
       {/* Title */}
-      <div className="text-center mb-12">
+      <div className="text-center mb-12 float">
         <h1 className="arcade-font text-4xl md:text-6xl mb-4">
-          <span className="text-red-500 glow-text">GOT</span>
-          <span className="text-yellow-400 glow-text"> YA!</span>
+          <span className="text-red-500 flicker">GOT</span>
+          <span className="text-yellow-400 flicker"> YA!</span>
         </h1>
         <p className="arcade-font text-xs text-gray-400 tracking-wider">
           THE ULTIMATE BLUFF GAME

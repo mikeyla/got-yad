@@ -259,16 +259,25 @@ export const GameScreen: React.FC<GameScreenProps> = ({
         {state.phase === 'revealing' && (
           <div className="w-full max-w-md">
             {/* Got Ya! Animation */}
-            {state.fooledBy && (
-              <div className="text-center mb-6 bounce-in">
-                <h2 className="arcade-font text-2xl text-red-500 glow-text mb-2">
+            {state.fooledBy ? (
+              <div className="text-center mb-6 gotcha">
+                <h2 className="arcade-font text-4xl text-red-500 flicker mb-2">
                   GOT YA!
                 </h2>
-                <p className="arcade-font text-[10px] text-yellow-400">
+                <p className="arcade-font text-sm text-yellow-400">
                   {state.fooledBy} fooled you!
                 </p>
               </div>
-            )}
+            ) : currentPlayer?.votedAnswerId && state.answers.find(a => a.id === currentPlayer.votedAnswerId)?.isCorrect ? (
+              <div className="text-center mb-6 bounce-in">
+                <h2 className="arcade-font text-3xl text-green-400 glow-text mb-2">
+                  NICE!
+                </h2>
+                <p className="arcade-font text-sm text-cyan-400">
+                  +{GAME_CONFIG.CORRECT_VOTE_POINTS} point for getting it right!
+                </p>
+              </div>
+            ) : null}
 
             <h2 className="arcade-font text-xs text-center mb-4 text-green-400">
               THE CORRECT ANSWER IS...
