@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Got ya! - The Ultimate Bluff Game</title>
+    <meta name="description" content="Got ya! is a multiplayer party trivia game where you bluff your friends with fake answers. Up to 20 players can join and compete to fool each other!" />
+    <meta name="author" content="Got ya!" />
+
+    <meta property="og:title" content="Got ya! - The Ultimate Bluff Game" />
+    <meta property="og:description" content="Bluff your friends in this retro arcade party game. Create fake answers, fool your friends, and score points!" />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/219b80d0-6902-4745-879f-37cd90147f41/id-preview-c5c57824--a4551b11-f7ff-4115-8edf-d2d37c2aa3c8.lovable.app-1765683540622.png" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@gotya" />
+    <meta name="twitter:image" content="https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/219b80d0-6902-4745-879f-37cd90147f41/id-preview-c5c57824--a4551b11-f7ff-4115-8edf-d2d37c2aa3c8.lovable.app-1765683540622.png" />
+    <script type="module" crossorigin src="/assets/index-C8a9XSb6.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CbTI9l6q.css">
+  <script defer src="https://got-ya.lovable.app/~flock.js" data-proxy-url="https://got-ya.lovable.app/~api/analytics"></script></head>
+
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
