@@ -53,10 +53,16 @@ export function useGameSync(
   // Initialize Supabase client if configured
   useEffect(() => {
     if (isSupabaseConfigured && !supabaseRef.current) {
-      supabaseRef.current = createClient(SUPABASE_URL!, SUPABASE_ANON_KEY!);
-      console.log('[Sync] Using Supabase for cross-device sync');
+      try {
+        supabaseRef.current = createClient(SUPABASE_URL!, SUPABASE_ANON_KEY!);
+        console.log('[Sync] Using Supabase for cross-device sync');
+      } catch (e) {
+        console.error('[Sync] Failed to initialize Supabase, falling back to local:', e);
+        setSyncMode('local');
+      }
     } else if (!isSupabaseConfigured) {
       console.log('[Sync] Using localStorage for same-browser sync');
+      setSyncMode('local');
     }
   }, []);
 
@@ -250,26 +256,34 @@ export function useGameSync(
 
     // Set up Supabase Realtime if configured
     if (supabaseRef.current) {
-      const channel = supabaseRef.current
-        .channel(`room:${roomCode}`)
-        .on('broadcast', { event: 'state_update' }, ({ payload }) => {
-          if (payload.senderId !== SESSION_ID && !isHostRef.current) {
-            onStateUpdate(payload.state);
-          }
-        })
-        .on('broadcast', { event: 'player_joined' }, ({ payload }) => {
-          if (payload.senderId !== SESSION_ID && isHostRef.current) {
-            onStateUpdate(payload.state);
-          }
-        })
-        .subscribe((status) => {
-          if (status === 'SUBSCRIBED') {
-            console.log('[Sync] Supabase Realtime connected');
-            setSyncMode('supabase');
-          }
-        });
+      try {
+        const channel = supabaseRef.current
+          .channel(`room:${roomCode}`)
+          .on('broadcast', { event: 'state_update' }, ({ payload }) => {
+            if (payload.senderId !== SESSION_ID && !isHostRef.current) {
+              onStateUpdate(payload.state);
+            }
+          })
+          .on('broadcast', { event: 'player_joined' }, ({ payload }) => {
+            if (payload.senderId !== SESSION_ID && isHostRef.current) {
+              onStateUpdate(payload.state);
+            }
+          })
+          .subscribe((status, err) => {
+            if (status === 'SUBSCRIBED') {
+              console.log('[Sync] Supabase Realtime connected');
+              setSyncMode('supabase');
+            } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+              console.warn('[Sync] Supabase connection failed, using local mode:', err);
+              setSyncMode('local');
+            }
+          });
 
-      realtimeChannelRef.current = channel;
+        realtimeChannelRef.current = channel;
+      } catch (e) {
+        console.error('[Sync] Failed to set up Supabase Realtime, using local mode:', e);
+        setSyncMode('local');
+      }
     }
 
     // Start polling for updates (fallback for unreliable events)
