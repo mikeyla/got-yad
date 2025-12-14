@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useGameState } from './hooks/useGameState';
 import { useGameSync } from './hooks/useGameSync';
 import { HomeScreen } from './components/HomeScreen';
@@ -25,28 +25,18 @@ function App() {
 
   const [isHost, setIsHost] = useState(false);
   const [pendingJoinCode, setPendingJoinCode] = useState<string | null>(null);
+  const lastBroadcastRef = useRef<string>('');
 
-  // Handle state updates from other browsers
+  // Handle state updates from sync (other tabs/browsers)
   const handleStateUpdate = useCallback((newState: GameState) => {
     setState(newState);
   }, [setState]);
 
-  // Handle player join requests (host only)
-  const handlePlayerJoin = useCallback((nickname: string, sessionId: string) => {
-    if (isHost) {
-      joinGame(nickname);
-      // Send the updated state to the new player
-      sync.sendJoinResponse(sessionId, state);
-    }
-  }, [isHost, joinGame, state]);
-
-  // Initialize sync
+  // Initialize sync with correct API
   const sync = useGameSync(
     state.roomCode,
     isHost,
-    state,
-    handleStateUpdate,
-    handlePlayerJoin
+    handleStateUpdate
   );
 
   // Check for join code in URL on mount
@@ -60,12 +50,16 @@ function App() {
     }
   }, []);
 
-  // Broadcast state updates when host makes changes
+  // Broadcast state updates when host makes changes (with deduplication)
   useEffect(() => {
     if (isHost && state.roomCode) {
-      sync.broadcastState(state);
+      const stateJson = JSON.stringify(state);
+      if (stateJson !== lastBroadcastRef.current) {
+        lastBroadcastRef.current = stateJson;
+        sync.broadcastState(state);
+      }
     }
-  }, [isHost, state, sync]);
+  }, [isHost, state, sync.broadcastState]);
 
   const handleCreateGame = (nickname: string) => {
     const code = createGame(nickname);
@@ -73,27 +67,34 @@ function App() {
     return code;
   };
 
-  const handleJoinGame = (nickname: string, code: string) => {
-    // Join the game with the room code
+  const handleJoinGame = useCallback((nickname: string, code: string) => {
+    // Try to join existing room via sync
     setIsHost(false);
-    joinGame(nickname, code);
-  };
+
+    // First check if room exists in storage
+    const existingState = sync.loadState();
+    if (existingState) {
+      // Room exists - add ourselves as a player
+      const player = sync.requestJoin(nickname);
+      if (player) {
+        // Successfully added - now load the full state
+        const updatedState = sync.loadState();
+        if (updatedState) {
+          setState({ ...updatedState, currentPlayerId: player.id });
+        }
+      }
+    } else {
+      // Room doesn't exist yet - create it locally
+      joinGame(nickname, code);
+    }
+  }, [sync, setState, joinGame]);
 
   const handleAddPlayer = (nickname: string) => {
     joinGame(nickname);
-    // Broadcast the updated state
-    if (isHost) {
-      setTimeout(() => {
-        sync.broadcastState(state);
-      }, 100);
-    }
   };
 
   const handleStartGame = () => {
-    const success = startGame();
-    if (success && isHost) {
-      // Broadcast will happen automatically via useEffect
-    }
+    startGame();
   };
 
   return (
