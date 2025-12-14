@@ -25,6 +25,7 @@ function App() {
 
   const [isHost, setIsHost] = useState(false);
   const [pendingJoinCode, setPendingJoinCode] = useState<string | null>(null);
+  const [joinError, setJoinError] = useState<string | null>(null);
   const lastBroadcastRef = useRef<string>('');
 
   // Handle state updates from sync (other tabs/browsers)
@@ -68,12 +69,15 @@ function App() {
   };
 
   const handleJoinGame = useCallback((nickname: string, code: string) => {
+    // Clear any previous errors
+    setJoinError(null);
+
     // Try to join existing room via sync
     setIsHost(false);
 
     // First check if room exists in storage
     const existingState = sync.loadState();
-    if (existingState) {
+    if (existingState && existingState.roomCode === code) {
       // Room exists - add ourselves as a player
       const player = sync.requestJoin(nickname);
       if (player) {
@@ -82,12 +86,14 @@ function App() {
         if (updatedState) {
           setState({ ...updatedState, currentPlayerId: player.id });
         }
+      } else {
+        setJoinError('Failed to join room. Please try again.');
       }
     } else {
-      // Room doesn't exist yet - create it locally
-      joinGame(nickname, code);
+      // Room doesn't exist - show error
+      setJoinError('Room not found! Check the code and try again.');
     }
-  }, [sync, setState, joinGame]);
+  }, [sync, setState]);
 
   const handleAddPlayer = (nickname: string) => {
     joinGame(nickname);
@@ -107,6 +113,7 @@ function App() {
           onCreateGame={handleCreateGame}
           onJoinGame={handleJoinGame}
           initialJoinCode={pendingJoinCode || undefined}
+          externalError={joinError || undefined}
         />
       )}
 
@@ -118,6 +125,10 @@ function App() {
           onStartGame={handleStartGame}
           onAddPlayer={handleAddPlayer}
           onLeaveGame={resetGame}
+          syncStatus={{
+            connected: sync.connected,
+            mode: sync.syncMode,
+          }}
         />
       )}
 
@@ -134,6 +145,7 @@ function App() {
           onSwitchPlayer={switchPlayer}
           leaderboard={getLeaderboard()}
           onPlayAgain={resetGame}
+          isOnlineMode={sync.syncMode === 'supabase'}
         />
       )}
     </div>

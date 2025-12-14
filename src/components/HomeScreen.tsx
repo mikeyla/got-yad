@@ -5,13 +5,21 @@ interface HomeScreenProps {
   onCreateGame: (nickname: string) => void;
   onJoinGame: (nickname: string, code: string) => void;
   initialJoinCode?: string;
+  externalError?: string;
 }
 
-export const HomeScreen: React.FC<HomeScreenProps> = ({ onCreateGame, onJoinGame, initialJoinCode }) => {
+export const HomeScreen: React.FC<HomeScreenProps> = ({ onCreateGame, onJoinGame, initialJoinCode, externalError }) => {
   const [nickname, setNickname] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [mode, setMode] = useState<'select' | 'create' | 'join'>('select');
   const [error, setError] = useState('');
+
+  // Update error when external error changes
+  useEffect(() => {
+    if (externalError) {
+      setError(externalError);
+    }
+  }, [externalError]);
 
   // Auto-switch to join mode if we have an initial join code
   useEffect(() => {

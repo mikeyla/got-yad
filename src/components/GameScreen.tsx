@@ -11,6 +11,7 @@ interface GameScreenProps {
   onSwitchPlayer: (playerId: string) => void;
   leaderboard: Player[];
   onPlayAgain: () => void;
+  isOnlineMode?: boolean;
 }
 
 export const GameScreen: React.FC<GameScreenProps> = ({
@@ -22,6 +23,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   onSwitchPlayer,
   leaderboard,
   onPlayAgain,
+  isOnlineMode = false,
 }) => {
   const [answerText, setAnswerText] = useState('');
   const [selectedAnswerId, setSelectedAnswerId] = useState<string | null>(null);
@@ -96,8 +98,8 @@ export const GameScreen: React.FC<GameScreenProps> = ({
         />
       </div>
 
-      {/* Player Selector (for local multiplayer) */}
-      {state.phase !== 'revealing' && state.phase !== 'finished' && (
+      {/* Player Selector (for local multiplayer only - hidden in online mode) */}
+      {!isOnlineMode && state.phase !== 'revealing' && state.phase !== 'finished' && (
         <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
           {state.players.map(player => (
             <button
@@ -124,6 +126,19 @@ export const GameScreen: React.FC<GameScreenProps> = ({
               )}
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Online mode: Show current player info */}
+      {isOnlineMode && state.phase !== 'finished' && currentPlayer && (
+        <div className="flex items-center gap-2 mb-4 justify-center">
+          <div
+            className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold"
+            style={{ backgroundColor: currentPlayer.avatarColor }}
+          >
+            {currentPlayer.nickname.charAt(0)}
+          </div>
+          <span className="font-medium">{currentPlayer.nickname}</span>
         </div>
       )}
 
@@ -240,7 +255,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
                 <button
                   onClick={handleSubmitVote}
                   disabled={!selectedAnswerId}
-                  className={`arcade-btn arcade-btn-blue w-full mt-4 ${
+                  className={`arcade-btn arcade-btn-secondary w-full mt-4 ${
                     !selectedAnswerId ? 'opacity-50 cursor-not-allowed' : ''
                   }`}
                 >
@@ -268,13 +283,22 @@ export const GameScreen: React.FC<GameScreenProps> = ({
                   {state.fooledBy} fooled you!
                 </p>
               </div>
+            ) : !currentPlayer?.hasVoted ? (
+              <div className="text-center mb-6">
+                <h2 className="arcade-font text-2xl text-gray-400 mb-2">
+                  TOO SLOW!
+                </h2>
+                <p className="arcade-font text-sm text-gray-500">
+                  You didn't vote in time!
+                </p>
+              </div>
             ) : currentPlayer?.votedAnswerId && state.answers.find(a => a.id === currentPlayer.votedAnswerId)?.isCorrect ? (
               <div className="text-center mb-6 bounce-in">
                 <h2 className="arcade-font text-3xl text-green-400 glow-text mb-2">
                   NICE!
                 </h2>
                 <p className="arcade-font text-sm text-cyan-400">
-                  +{GAME_CONFIG.CORRECT_VOTE_POINTS} point for getting it right!
+                  +{GAME_CONFIG.CORRECT_VOTE_POINTS} point{GAME_CONFIG.CORRECT_VOTE_POINTS !== 1 ? 's' : ''} for getting it right!
                 </p>
               </div>
             ) : null}

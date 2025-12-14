@@ -10,6 +10,10 @@ interface LobbyScreenProps {
   onStartGame: () => void;
   onAddPlayer: (nickname: string) => void;
   onLeaveGame: () => void;
+  syncStatus?: {
+    connected: boolean;
+    mode: 'local' | 'supabase';
+  };
 }
 
 // Copy icon SVG
@@ -34,6 +38,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
   onStartGame,
   onAddPlayer,
   onLeaveGame,
+  syncStatus,
 }) => {
   const [newPlayerName, setNewPlayerName] = useState('');
   const [copied, setCopied] = useState(false);
@@ -71,6 +76,16 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4">
+      {/* Sync Status Indicator */}
+      {syncStatus && (
+        <div className="fixed top-4 right-4 flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${syncStatus.connected ? 'bg-green-400' : 'bg-yellow-400'} ${syncStatus.connected ? '' : 'animate-pulse'}`} />
+          <span className="arcade-font text-[8px] text-[hsl(var(--muted-foreground))]">
+            {syncStatus.mode === 'supabase' ? 'ONLINE' : 'LOCAL'}
+          </span>
+        </div>
+      )}
+
       {/* Room Code Section */}
       <div className="text-center mb-8">
         <p className="arcade-font text-[10px] text-[hsl(var(--muted-foreground))] mb-2">ROOM CODE</p>
