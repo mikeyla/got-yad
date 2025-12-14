@@ -122,6 +122,25 @@ export function useGameSync(
     return null;
   }, [storageKey]);
 
+  // Load state by a specific room code (useful for joining)
+  const loadStateByCode = useCallback((code: string): GameState | null => {
+    if (!code) return null;
+
+    const key = `${STORAGE_KEY_PREFIX}${code}`;
+    try {
+      const data = localStorage.getItem(key);
+      if (data) {
+        const roomData: RoomData = JSON.parse(data);
+        if (Date.now() - roomData.lastUpdate < 3600000) {
+          return roomData.state;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load state by code:', e);
+    }
+    return null;
+  }, []);
+
   // Broadcast state update
   const broadcastState = useCallback(async (state: GameState) => {
     // Save to storage
@@ -147,8 +166,11 @@ export function useGameSync(
   }, [saveState]);
 
   // Request to join a room (non-host)
-  const requestJoin = useCallback((nickname: string): Player | null => {
-    if (!storageKey) return null;
+  const requestJoin = useCallback((nickname: string, roomCodeToJoin?: string): Player | null => {
+    const targetCode = roomCodeToJoin || roomCode;
+    const targetKey = `${STORAGE_KEY_PREFIX}${targetCode}`;
+
+    if (!targetCode) return null;
 
     // Create new player
     const newPlayer: Player = {
@@ -162,7 +184,7 @@ export function useGameSync(
     };
 
     // Try to load existing room from localStorage (synchronous check)
-    const existingState = loadStateSync();
+    const existingState = roomCodeToJoin ? loadStateByCode(roomCodeToJoin) : loadStateSync();
     if (existingState) {
       // Add player to existing state
       const updatedState: GameState = {
@@ -170,23 +192,23 @@ export function useGameSync(
         players: [...existingState.players, newPlayer],
       };
 
-      // Save updated state
+      // Save updated state to the correct key
       const roomData: RoomData = {
         state: updatedState,
         lastUpdate: Date.now(),
         hostSessionId: '', // Non-host update
       };
-      localStorage.setItem(storageKey, JSON.stringify(roomData));
+      localStorage.setItem(targetKey, JSON.stringify(roomData));
 
-      // Broadcast the join
-      if (channelRef.current) {
-        channelRef.current.postMessage({
-          type: 'PLAYER_JOINED',
-          player: newPlayer,
-          state: updatedState,
-          senderId: SESSION_ID,
-        });
-      }
+      // Broadcast the join via BroadcastChannel for the target room
+      const targetChannel = new BroadcastChannel(`gotya-${targetCode}`);
+      targetChannel.postMessage({
+        type: 'PLAYER_JOINED',
+        player: newPlayer,
+        state: updatedState,
+        senderId: SESSION_ID,
+      });
+      targetChannel.close();
 
       // Also broadcast via Supabase if configured
       if (realtimeChannelRef.current) {
@@ -201,7 +223,7 @@ export function useGameSync(
     }
 
     return null;
-  }, [storageKey, loadStateSync]);
+  }, [roomCode, loadStateSync, loadStateByCode]);
 
   // Initialize sync
   useEffect(() => {
@@ -287,20 +309,33 @@ export function useGameSync(
     }
 
     // Start polling for updates (fallback for unreliable events)
+    // Both host and non-host poll to ensure sync reliability
     let lastUpdate = 0;
+    let lastPlayerCount = 0;
     pollingRef.current = window.setInterval(() => {
-      if (!isHostRef.current) {
-        const data = localStorage.getItem(storageKey);
-        if (data) {
-          try {
-            const roomData: RoomData = JSON.parse(data);
-            if (roomData.lastUpdate > lastUpdate) {
+      const data = localStorage.getItem(storageKey);
+      if (data) {
+        try {
+          const roomData: RoomData = JSON.parse(data);
+
+          if (isHostRef.current) {
+            // Host: only update if player count changed (someone joined/left)
+            const currentCount = roomData.state.players.length;
+            if (currentCount !== lastPlayerCount) {
+              lastPlayerCount = currentCount;
               lastUpdate = roomData.lastUpdate;
               onStateUpdate(roomData.state);
             }
-          } catch (e) {
-            // Ignore parse errors
+          } else {
+            // Non-host: update on any state change
+            if (roomData.lastUpdate > lastUpdate) {
+              lastUpdate = roomData.lastUpdate;
+              lastPlayerCount = roomData.state.players.length;
+              onStateUpdate(roomData.state);
+            }
           }
+        } catch (e) {
+          // Ignore parse errors
         }
       }
     }, 500); // Poll every 500ms
@@ -343,6 +378,7 @@ export function useGameSync(
     broadcastState,
     requestJoin,
     loadState: loadStateSync, // Use sync version for API compatibility
+    loadStateByCode, // Load by specific room code (for joining)
     saveState,
     cleanupRoom,
   };

@@ -75,14 +75,15 @@ function App() {
     // Try to join existing room via sync
     setIsHost(false);
 
-    // First check if room exists in storage
-    const existingState = sync.loadState();
+    // First check if room exists in storage using the specific code
+    const existingState = sync.loadStateByCode(code);
+
     if (existingState && existingState.roomCode === code) {
-      // Room exists - add ourselves as a player
-      const player = sync.requestJoin(nickname);
+      // Room exists - add ourselves as a player (pass the code!)
+      const player = sync.requestJoin(nickname, code);
       if (player) {
         // Successfully added - now load the full state
-        const updatedState = sync.loadState();
+        const updatedState = sync.loadStateByCode(code);
         if (updatedState) {
           setState({ ...updatedState, currentPlayerId: player.id });
         }
