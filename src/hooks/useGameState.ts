@@ -1,192 +1,334 @@
-import { useState, useCallback } from 'react';
-import { GameState, Bid, GamePhase } from '../types/game';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import type { GameState, Player, Answer } from '../types/game';
 import {
-  createInitialState,
-  rollDice,
-  isValidBid,
-  resolveChallenge,
-  getOtherPlayer,
-  formatBid,
-} from '../utils/gameLogic';
+  GAME_CONFIG,
+  generateRoomCode,
+  generateId,
+  getRandomColor,
+  shuffleArray,
+} from '../types/game';
+import { getRandomQuestions } from '../data/questions';
+
+const createInitialState = (): GameState => ({
+  phase: 'home',
+  roomCode: '',
+  players: [],
+  currentPlayerId: '',
+  questions: [],
+  currentQuestionIndex: 0,
+  answers: [],
+  timeRemaining: 0,
+  roundNumber: 1,
+  totalRounds: GAME_CONFIG.TOTAL_ROUNDS,
+  fooledBy: undefined,
+});
 
 export function useGameState() {
   const [state, setState] = useState<GameState>(createInitialState());
-  const [isAnimating, setIsAnimating] = useState(false);
+  const timerRef = useRef<number | null>(null);
 
-  const setPlayerNames = useCallback((name1: string, name2: string) => {
-    setState(prev => ({
-      ...prev,
-      player1: { ...prev.player1, name: name1 || 'Player 1' },
-      player2: { ...prev.player2, name: name2 || 'Player 2' },
-    }));
-  }, []);
+  // Timer effect
+  useEffect(() => {
+    if (state.timeRemaining > 0 && (state.phase === 'submitting' || state.phase === 'voting' || state.phase === 'revealing')) {
+      timerRef.current = window.setTimeout(() => {
+        setState(prev => ({ ...prev, timeRemaining: prev.timeRemaining - 1 }));
+      }, 1000);
+    } else if (state.timeRemaining === 0) {
+      // Handle phase transitions
+      if (state.phase === 'submitting') {
+        transitionToVoting();
+      } else if (state.phase === 'voting') {
+        transitionToRevealing();
+      } else if (state.phase === 'revealing') {
+        transitionToNextRound();
+      }
+    }
 
-  const startGame = useCallback(() => {
-    setIsAnimating(true);
-    setState(prev => ({
-      ...prev,
-      phase: 'rolling',
-      lastAction: 'Rolling dice...',
-    }));
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+    };
+  }, [state.timeRemaining, state.phase]);
 
-    // Simulate dice rolling animation
-    setTimeout(() => {
-      const p1Dice = rollDice(state.dicePerPlayer);
-      const p2Dice = rollDice(state.dicePerPlayer);
-
-      setState(prev => ({
-        ...prev,
-        phase: 'bidding',
-        player1: { ...prev.player1, dice: p1Dice, isCurrentTurn: true },
-        player2: { ...prev.player2, dice: p2Dice, isCurrentTurn: false },
-        currentBid: null,
-        lastAction: `${prev.player1.name}'s turn to bid first!`,
-      }));
-      setIsAnimating(false);
-    }, 1000);
-  }, [state.dicePerPlayer]);
-
-  const placeBid = useCallback((quantity: number, faceValue: number) => {
-    const currentPlayer = state.player1.isCurrentTurn ? state.player1 : state.player2;
-    const totalDice = state.dicePerPlayer * 2;
-
-    const newBid: Bid = {
-      quantity,
-      faceValue,
-      playerId: currentPlayer.id,
+  const createGame = useCallback((hostNickname: string) => {
+    const roomCode = generateRoomCode();
+    const hostPlayer: Player = {
+      id: generateId(),
+      nickname: hostNickname || 'Player 1',
+      avatarColor: getRandomColor(),
+      score: 0,
+      isHost: true,
+      hasAnswered: false,
+      hasVoted: false,
     };
 
-    if (!isValidBid(newBid, state.currentBid, totalDice)) {
+    setState(prev => ({
+      ...prev,
+      phase: 'lobby',
+      roomCode,
+      players: [hostPlayer],
+      currentPlayerId: hostPlayer.id,
+    }));
+
+    return roomCode;
+  }, []);
+
+  const joinGame = useCallback((nickname: string) => {
+    const newPlayer: Player = {
+      id: generateId(),
+      nickname: nickname || `Player ${state.players.length + 1}`,
+      avatarColor: getRandomColor(),
+      score: 0,
+      isHost: false,
+      hasAnswered: false,
+      hasVoted: false,
+    };
+
+    setState(prev => ({
+      ...prev,
+      players: [...prev.players, newPlayer],
+      currentPlayerId: newPlayer.id,
+    }));
+
+    return newPlayer.id;
+  }, [state.players.length]);
+
+  const startGame = useCallback(() => {
+    if (state.players.length < GAME_CONFIG.MIN_PLAYERS) {
       return false;
     }
 
-    setState(prev => {
-      const nextPlayer = currentPlayer.id === 1 ? prev.player2 : prev.player1;
-      return {
-        ...prev,
-        currentBid: newBid,
-        player1: { ...prev.player1, isCurrentTurn: currentPlayer.id !== 1 },
-        player2: { ...prev.player2, isCurrentTurn: currentPlayer.id !== 2 },
-        lastAction: `${currentPlayer.name} bids: ${formatBid(newBid)}. ${nextPlayer.name}'s turn!`,
-      };
-    });
+    const questions = getRandomQuestions(GAME_CONFIG.TOTAL_ROUNDS);
+
+    // Add the correct answer as the first answer
+    const correctAnswer: Answer = {
+      id: generateId(),
+      playerId: 'system',
+      playerNickname: 'The Truth',
+      text: questions[0].correctAnswer,
+      isCorrect: true,
+      voteCount: 0,
+      votedBy: [],
+    };
+
+    setState(prev => ({
+      ...prev,
+      phase: 'submitting',
+      questions,
+      currentQuestionIndex: 0,
+      roundNumber: 1,
+      answers: [correctAnswer],
+      timeRemaining: GAME_CONFIG.SUBMIT_TIME,
+      players: prev.players.map(p => ({
+        ...p,
+        hasAnswered: false,
+        hasVoted: false,
+        currentAnswer: undefined,
+        votedAnswerId: undefined,
+      })),
+    }));
 
     return true;
-  }, [state]);
+  }, [state.players.length]);
 
-  const callBluff = useCallback(() => {
-    if (!state.currentBid) return;
+  const submitAnswer = useCallback((playerId: string, answerText: string) => {
+    const player = state.players.find(p => p.id === playerId);
+    if (!player || player.hasAnswered) return false;
 
-    const challenger = state.player1.isCurrentTurn ? state.player1 : state.player2;
-    const bidder = state.player1.isCurrentTurn ? state.player2 : state.player1;
+    const newAnswer: Answer = {
+      id: generateId(),
+      playerId,
+      playerNickname: player.nickname,
+      text: answerText.trim(),
+      isCorrect: false,
+      voteCount: 0,
+      votedBy: [],
+    };
 
     setState(prev => ({
       ...prev,
-      phase: 'challenge',
-      lastAction: `${challenger.name} calls "GOT YA!" on ${bidder.name}!`,
+      answers: [...prev.answers, newAnswer],
+      players: prev.players.map(p =>
+        p.id === playerId
+          ? { ...p, hasAnswered: true, currentAnswer: answerText }
+          : p
+      ),
     }));
 
-    // Show the challenge animation, then reveal
-    setTimeout(() => {
-      setState(prev => ({
-        ...prev,
-        phase: 'reveal',
-      }));
+    return true;
+  }, [state.players]);
 
-      // After reveal, determine winner
-      setTimeout(() => {
-        const result = resolveChallenge(
-          state.currentBid!,
-          state.player1.dice,
-          state.player2.dice,
-          challenger.id
-        );
-
-        const roundWinner = result.winner;
-        const winnerPlayer = roundWinner === 1 ? state.player1 : state.player2;
-        const loserPlayer = roundWinner === 1 ? state.player2 : state.player1;
-
-        const newScore = winnerPlayer.score + 1;
-        const gameWon = newScore >= state.winningScore;
-
-        const resultMessage = result.wasBluff
-          ? `It was a bluff! Only ${result.actualCount} dice showed ${state.currentBid!.faceValue}. ${challenger.name} wins the round!`
-          : `Not a bluff! ${result.actualCount} dice showed ${state.currentBid!.faceValue}. ${bidder.name} wins the round!`;
-
-        setState(prev => ({
-          ...prev,
-          phase: gameWon ? 'gameEnd' : 'roundEnd',
-          roundWinner,
-          winner: gameWon ? roundWinner : null,
-          player1: {
-            ...prev.player1,
-            score: roundWinner === 1 ? newScore : prev.player1.score,
-          },
-          player2: {
-            ...prev.player2,
-            score: roundWinner === 2 ? newScore : prev.player2.score,
-          },
-          lastAction: resultMessage,
-        }));
-      }, 2000);
-    }, 1500);
-  }, [state]);
-
-  const startNewRound = useCallback(() => {
-    setIsAnimating(true);
+  const transitionToVoting = useCallback(() => {
+    // Shuffle answers so correct answer isn't always first
     setState(prev => ({
       ...prev,
-      phase: 'rolling',
-      roundNumber: prev.roundNumber + 1,
-      currentBid: null,
-      roundWinner: null,
-      lastAction: 'Rolling dice for new round...',
-    }));
-
-    setTimeout(() => {
-      const p1Dice = rollDice(state.dicePerPlayer);
-      const p2Dice = rollDice(state.dicePerPlayer);
-
-      // Loser of previous round goes first
-      const loserGoesFirst = state.roundWinner === 2;
-
-      setState(prev => ({
-        ...prev,
-        phase: 'bidding',
-        player1: { ...prev.player1, dice: p1Dice, isCurrentTurn: loserGoesFirst },
-        player2: { ...prev.player2, dice: p2Dice, isCurrentTurn: !loserGoesFirst },
-        lastAction: `Round ${prev.roundNumber}! ${loserGoesFirst ? prev.player1.name : prev.player2.name}'s turn to bid first!`,
-      }));
-      setIsAnimating(false);
-    }, 1000);
-  }, [state.dicePerPlayer, state.roundWinner]);
-
-  const resetGame = useCallback(() => {
-    setState(prev => ({
-      ...createInitialState(),
-      player1: { ...createInitialState().player1, name: prev.player1.name },
-      player2: { ...createInitialState().player2, name: prev.player2.name },
+      phase: 'voting',
+      answers: shuffleArray(prev.answers),
+      timeRemaining: GAME_CONFIG.VOTE_TIME,
+      players: prev.players.map(p => ({ ...p, hasVoted: false, votedAnswerId: undefined })),
     }));
   }, []);
 
-  const getCurrentPlayer = useCallback(() => {
-    return state.player1.isCurrentTurn ? state.player1 : state.player2;
-  }, [state.player1.isCurrentTurn]);
+  const submitVote = useCallback((playerId: string, answerId: string) => {
+    const player = state.players.find(p => p.id === playerId);
+    const answer = state.answers.find(a => a.id === answerId);
 
-  const getWaitingPlayer = useCallback(() => {
-    return state.player1.isCurrentTurn ? state.player2 : state.player1;
-  }, [state.player1.isCurrentTurn]);
+    if (!player || player.hasVoted || !answer) return false;
+
+    // Can't vote for your own answer
+    if (answer.playerId === playerId) return false;
+
+    setState(prev => ({
+      ...prev,
+      answers: prev.answers.map(a =>
+        a.id === answerId
+          ? { ...a, voteCount: a.voteCount + 1, votedBy: [...a.votedBy, playerId] }
+          : a
+      ),
+      players: prev.players.map(p =>
+        p.id === playerId
+          ? { ...p, hasVoted: true, votedAnswerId: answerId }
+          : p
+      ),
+    }));
+
+    return true;
+  }, [state.players, state.answers]);
+
+  const transitionToRevealing = useCallback(() => {
+    // Calculate scores
+    const currentPlayer = state.players.find(p => p.id === state.currentPlayerId);
+    const votedAnswer = state.answers.find(a => a.id === currentPlayer?.votedAnswerId);
+
+    let fooledBy: string | undefined;
+    if (votedAnswer && !votedAnswer.isCorrect) {
+      fooledBy = votedAnswer.playerNickname;
+    }
+
+    // Update scores
+    const updatedPlayers = state.players.map(player => {
+      let newScore = player.score;
+
+      // Check if player voted correctly
+      const playerVotedAnswer = state.answers.find(a => a.id === player.votedAnswerId);
+      if (playerVotedAnswer?.isCorrect) {
+        newScore += GAME_CONFIG.CORRECT_VOTE_POINTS;
+      }
+
+      // Check if player's fake answer fooled anyone
+      const playerAnswer = state.answers.find(a => a.playerId === player.id);
+      if (playerAnswer && !playerAnswer.isCorrect) {
+        newScore += playerAnswer.voteCount * GAME_CONFIG.FOOL_POINTS;
+      }
+
+      return { ...player, score: newScore };
+    });
+
+    setState(prev => ({
+      ...prev,
+      phase: 'revealing',
+      timeRemaining: GAME_CONFIG.REVEAL_TIME,
+      players: updatedPlayers,
+      fooledBy,
+    }));
+  }, [state.players, state.answers, state.currentPlayerId]);
+
+  const transitionToNextRound = useCallback(() => {
+    const nextIndex = state.currentQuestionIndex + 1;
+
+    if (nextIndex >= state.totalRounds) {
+      // Game over
+      setState(prev => ({
+        ...prev,
+        phase: 'finished',
+        timeRemaining: 0,
+      }));
+    } else {
+      // Next round
+      const correctAnswer: Answer = {
+        id: generateId(),
+        playerId: 'system',
+        playerNickname: 'The Truth',
+        text: state.questions[nextIndex].correctAnswer,
+        isCorrect: true,
+        voteCount: 0,
+        votedBy: [],
+      };
+
+      setState(prev => ({
+        ...prev,
+        phase: 'submitting',
+        currentQuestionIndex: nextIndex,
+        roundNumber: nextIndex + 1,
+        answers: [correctAnswer],
+        timeRemaining: GAME_CONFIG.SUBMIT_TIME,
+        fooledBy: undefined,
+        players: prev.players.map(p => ({
+          ...p,
+          hasAnswered: false,
+          hasVoted: false,
+          currentAnswer: undefined,
+          votedAnswerId: undefined,
+        })),
+      }));
+    }
+  }, [state.currentQuestionIndex, state.totalRounds, state.questions]);
+
+  const resetGame = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+    }
+    setState(createInitialState());
+  }, []);
+
+  const getCurrentQuestion = useCallback(() => {
+    return state.questions[state.currentQuestionIndex];
+  }, [state.questions, state.currentQuestionIndex]);
+
+  const getCurrentPlayer = useCallback(() => {
+    return state.players.find(p => p.id === state.currentPlayerId);
+  }, [state.players, state.currentPlayerId]);
+
+  const getLeaderboard = useCallback(() => {
+    return [...state.players].sort((a, b) => b.score - a.score);
+  }, [state.players]);
+
+  // For local two-player mode: switch active player
+  const switchPlayer = useCallback((playerId: string) => {
+    setState(prev => ({ ...prev, currentPlayerId: playerId }));
+  }, []);
+
+  // Check if all players have completed current action
+  const allPlayersAnswered = state.players.every(p => p.hasAnswered);
+  const allPlayersVoted = state.players.every(p => p.hasVoted);
+
+  // Auto-advance when all players are done
+  useEffect(() => {
+    if (state.phase === 'submitting' && allPlayersAnswered && state.timeRemaining > 0) {
+      transitionToVoting();
+    }
+  }, [allPlayersAnswered, state.phase, state.timeRemaining, transitionToVoting]);
+
+  useEffect(() => {
+    if (state.phase === 'voting' && allPlayersVoted && state.timeRemaining > 0) {
+      transitionToRevealing();
+    }
+  }, [allPlayersVoted, state.phase, state.timeRemaining, transitionToRevealing]);
 
   return {
     state,
-    isAnimating,
-    setPlayerNames,
+    createGame,
+    joinGame,
     startGame,
-    placeBid,
-    callBluff,
-    startNewRound,
+    submitAnswer,
+    submitVote,
     resetGame,
+    getCurrentQuestion,
     getCurrentPlayer,
-    getWaitingPlayer,
+    getLeaderboard,
+    switchPlayer,
+    allPlayersAnswered,
+    allPlayersVoted,
   };
 }
