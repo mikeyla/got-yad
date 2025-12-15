@@ -166,8 +166,8 @@ export function useGameState() {
     return clearTimer;
   }, [state.timeRemaining, state.phase, clearTimer]);
 
-  const createGame = useCallback((hostNickname: string) => {
-    const roomCode = generateRoomCode();
+  const createGame = useCallback((hostNickname: string, preGeneratedCode?: string) => {
+    const roomCode = preGeneratedCode || generateRoomCode();
     const hostPlayer: Player = {
       id: generateId(),
       nickname: hostNickname || 'Player 1',

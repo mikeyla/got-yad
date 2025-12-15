@@ -122,7 +122,7 @@ export function useGameSync(
     return null;
   }, [storageKey]);
 
-  // Load state by a specific room code (useful for joining)
+  // Load state by a specific room code (useful for joining - localStorage only)
   const loadStateByCode = useCallback((code: string): GameState | null => {
     if (!code) return null;
 
@@ -140,6 +140,110 @@ export function useGameSync(
     }
     return null;
   }, []);
+
+  // Fetch room from Supabase by code (for cross-device join)
+  const fetchRoomFromSupabase = useCallback(async (code: string): Promise<GameState | null> => {
+    if (!supabaseRef.current || !code) return null;
+
+    try {
+      const { data, error } = await supabaseRef.current
+        .from('game_rooms')
+        .select('state, last_update')
+        .eq('room_code', code)
+        .single();
+
+      if (error) {
+        console.log('[Sync] Room not found in Supabase:', error.message);
+        return null;
+      }
+
+      if (data && data.state) {
+        const state = JSON.parse(data.state) as GameState;
+        console.log('[Sync] Fetched room from Supabase:', code, 'players:', state.players.length);
+        return state;
+      }
+    } catch (e) {
+      console.error('[Sync] Failed to fetch from Supabase:', e);
+    }
+    return null;
+  }, []);
+
+  // Join room via Supabase (for cross-device join)
+  const joinRoomViaSupabase = useCallback(async (nickname: string, code: string): Promise<{ player: Player; state: GameState } | null> => {
+    if (!supabaseRef.current) {
+      console.log('[Sync] Supabase not configured, cannot join cross-device');
+      return null;
+    }
+
+    // First fetch the current room state
+    const existingState = await fetchRoomFromSupabase(code);
+    if (!existingState) {
+      console.log('[Sync] Cannot join - room not found');
+      return null;
+    }
+
+    // Check if game already started
+    if (existingState.phase !== 'lobby') {
+      console.log('[Sync] Cannot join - game already started');
+      return null;
+    }
+
+    // Create new player
+    const newPlayer: Player = {
+      id: generateId(),
+      nickname,
+      avatarColor: getRandomColor(),
+      score: 0,
+      isHost: false,
+      hasAnswered: false,
+      hasVoted: false,
+    };
+
+    // Add player to state
+    const updatedState: GameState = {
+      ...existingState,
+      players: [...existingState.players, newPlayer],
+    };
+
+    // Save to Supabase
+    try {
+      const { error } = await supabaseRef.current
+        .from('game_rooms')
+        .update({
+          state: JSON.stringify(updatedState),
+          last_update: new Date().toISOString(),
+        })
+        .eq('room_code', code);
+
+      if (error) {
+        console.error('[Sync] Failed to update room in Supabase:', error);
+        return null;
+      }
+
+      // Also save to localStorage for this device
+      const key = `${STORAGE_KEY_PREFIX}${code}`;
+      const roomData: RoomData = {
+        state: updatedState,
+        lastUpdate: Date.now(),
+        hostSessionId: '',
+      };
+      localStorage.setItem(key, JSON.stringify(roomData));
+
+      // Broadcast join via realtime
+      const channel = supabaseRef.current.channel(`room:${code}`);
+      await channel.send({
+        type: 'broadcast',
+        event: 'player_joined',
+        payload: { player: newPlayer, state: updatedState, senderId: SESSION_ID },
+      });
+
+      console.log('[Sync] Successfully joined room via Supabase');
+      return { player: newPlayer, state: updatedState };
+    } catch (e) {
+      console.error('[Sync] Join error:', e);
+      return null;
+    }
+  }, [fetchRoomFromSupabase]);
 
   // Broadcast state update
   const broadcastState = useCallback(async (state: GameState) => {
@@ -379,6 +483,8 @@ export function useGameSync(
     requestJoin,
     loadState: loadStateSync, // Use sync version for API compatibility
     loadStateByCode, // Load by specific room code (for joining)
+    fetchRoomFromSupabase, // Fetch room from Supabase (cross-device)
+    joinRoomViaSupabase, // Join room via Supabase (cross-device)
     saveState,
     cleanupRoom,
   };

@@ -1,18 +1,23 @@
-import React, { useState, useEffect } from 'react';
-import { GAME_CONFIG } from '../types/game';
+import React, { useState, useEffect, useMemo } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
+import { GAME_CONFIG, generateRoomCode } from '../types/game';
 
 interface HomeScreenProps {
-  onCreateGame: (nickname: string) => void;
+  onCreateGame: (nickname: string, roomCode: string) => void;
   onJoinGame: (nickname: string, code: string) => void;
   initialJoinCode?: string;
   externalError?: string;
+  isJoining?: boolean;
 }
 
-export const HomeScreen: React.FC<HomeScreenProps> = ({ onCreateGame, onJoinGame, initialJoinCode, externalError }) => {
+export const HomeScreen: React.FC<HomeScreenProps> = ({ onCreateGame, onJoinGame, initialJoinCode, externalError, isJoining }) => {
   const [nickname, setNickname] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [mode, setMode] = useState<'select' | 'create' | 'join'>('select');
   const [error, setError] = useState('');
+
+  // Pre-generate room code for QR display before game creation
+  const previewRoomCode = useMemo(() => generateRoomCode(), []);
 
   // Update error when external error changes
   useEffect(() => {
@@ -38,8 +43,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onCreateGame, onJoinGame
       setError(`Nickname too long! Max ${GAME_CONFIG.MAX_NICKNAME_LENGTH} characters.`);
       return;
     }
-    onCreateGame(nickname.trim());
+    onCreateGame(nickname.trim(), previewRoomCode);
   };
+
+  // Generate join URL for QR code
+  const joinUrl = `${window.location.origin}?join=${previewRoomCode}`;
 
   const handleJoin = () => {
     if (!nickname.trim()) {
@@ -98,9 +106,28 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onCreateGame, onJoinGame
 
       {mode === 'create' && (
         <div className="arcade-card w-full max-w-md">
-          <h2 className="arcade-font text-sm text-center mb-6 text-[hsl(var(--accent))]">
+          <h2 className="arcade-font text-sm text-center mb-4 text-[hsl(var(--accent))]">
             CREATE GAME
           </h2>
+
+          {/* Early QR code display - players can scan while host enters name */}
+          <div className="text-center mb-4">
+            <p className="arcade-font text-[10px] text-[hsl(var(--muted-foreground))] mb-2">
+              ROOM CODE: <span className="text-[hsl(var(--accent))]">{previewRoomCode}</span>
+            </p>
+            <div className="qr-container mx-auto mb-2" style={{ width: 'fit-content' }}>
+              <QRCodeSVG
+                value={joinUrl}
+                size={100}
+                level="M"
+                bgColor="hsl(60, 100%, 97%)"
+                fgColor="hsl(240, 20%, 4%)"
+              />
+            </div>
+            <p className="arcade-font text-[8px] text-[hsl(var(--muted-foreground))]">
+              PLAYERS CAN SCAN TO JOIN NOW!
+            </p>
+          </div>
 
           <div className="space-y-4">
             <div>
@@ -197,9 +224,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onCreateGame, onJoinGame
 
             <button
               onClick={handleJoin}
-              className="arcade-btn w-full"
+              disabled={isJoining}
+              className={`arcade-btn w-full ${isJoining ? 'opacity-50 cursor-wait' : ''}`}
             >
-              JOIN
+              {isJoining ? 'JOINING...' : 'JOIN'}
             </button>
 
             <button

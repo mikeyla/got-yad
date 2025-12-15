@@ -26,6 +26,7 @@ function App() {
   const [isHost, setIsHost] = useState(false);
   const [pendingJoinCode, setPendingJoinCode] = useState<string | null>(null);
   const [joinError, setJoinError] = useState<string | null>(null);
+  const [isJoining, setIsJoining] = useState(false);
   const lastBroadcastRef = useRef<string>('');
 
   // Handle state updates from sync (other tabs/browsers)
@@ -62,37 +63,51 @@ function App() {
     }
   }, [isHost, state, sync.broadcastState]);
 
-  const handleCreateGame = (nickname: string) => {
-    const code = createGame(nickname);
+  const handleCreateGame = (nickname: string, roomCode?: string) => {
+    const code = createGame(nickname, roomCode);
     setIsHost(true);
     return code;
   };
 
-  const handleJoinGame = useCallback((nickname: string, code: string) => {
+  const handleJoinGame = useCallback(async (nickname: string, code: string) => {
     // Clear any previous errors
     setJoinError(null);
+    setIsJoining(true);
 
     // Try to join existing room via sync
     setIsHost(false);
 
-    // First check if room exists in storage using the specific code
-    const existingState = sync.loadStateByCode(code);
+    try {
+      // First check if room exists in localStorage (same browser/device)
+      const existingState = sync.loadStateByCode(code);
 
-    if (existingState && existingState.roomCode === code) {
-      // Room exists - add ourselves as a player (pass the code!)
-      const player = sync.requestJoin(nickname, code);
-      if (player) {
-        // Successfully added - now load the full state
-        const updatedState = sync.loadStateByCode(code);
-        if (updatedState) {
-          setState({ ...updatedState, currentPlayerId: player.id });
+      if (existingState && existingState.roomCode === code) {
+        // Room exists locally - add ourselves as a player
+        const player = sync.requestJoin(nickname, code);
+        if (player) {
+          // Successfully added - now load the full state
+          const updatedState = sync.loadStateByCode(code);
+          if (updatedState) {
+            setState({ ...updatedState, currentPlayerId: player.id });
+          }
+        } else {
+          setJoinError('Failed to join room. Please try again.');
         }
-      } else {
-        setJoinError('Failed to join room. Please try again.');
+        return;
       }
-    } else {
-      // Room doesn't exist - show error
-      setJoinError('Room not found! Check the code and try again.');
+
+      // Not found locally - try Supabase (cross-device join)
+      console.log('[App] Room not in localStorage, trying Supabase...');
+      const result = await sync.joinRoomViaSupabase(nickname, code);
+
+      if (result) {
+        console.log('[App] Successfully joined via Supabase');
+        setState({ ...result.state, currentPlayerId: result.player.id });
+      } else {
+        setJoinError('Room not found! Check the code and try again.');
+      }
+    } finally {
+      setIsJoining(false);
     }
   }, [sync, setState]);
 
@@ -115,6 +130,7 @@ function App() {
           onJoinGame={handleJoinGame}
           initialJoinCode={pendingJoinCode || undefined}
           externalError={joinError || undefined}
+          isJoining={isJoining}
         />
       )}
 
